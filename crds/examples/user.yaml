@@ -1,0 +1,8 @@
+apiVersion: reqres.in/v1alpha1
+kind: User
+metadata:
+  name: adil
+spec:
+  email: test@email.com
+  firstName: Adil
+  lastName: Rafique
