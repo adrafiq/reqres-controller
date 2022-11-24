@@ -1,0 +1,66 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: users.reqres.in
+spec:
+  group: reqres.in
+  names:
+    kind: User
+    listKind: UserList
+    plural: users
+    shortNames:
+    - usr
+    singular: user
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        type: object
+        properties:
+          spec:
+            type: object
+            properties:
+              email:
+                type: string
+                pattern: '[a-zA-Z0-9._-]+(@)[a-zA-Z0-9]+(.)[a-z]+$'
+              firstName:
+                type: string
+              lastName:
+                type: string
+              avatar:
+                type: string
+            required:
+            - email
+            - firstName
+          status:
+            type: object
+            properties:
+              state:
+                type: string
+              lastChecked: 
+                type: string
+                format: datetime
+              id:
+                type: number
+    additionalPrinterColumns:
+    - name: email
+      type: string
+      description: Primary email of user
+      jsonPath: .spec.email
+    - name: state
+      type: string
+      description: Current state in backend
+      jsonPath: .status.state
+    - name: lastChecked
+      type: string
+      jsonPath: .status.lastChecked
+      description: Sync checked with backend
+    - name: ID 
+      type: number
+      jsonPath: .status.id
+      description: Primary ID in backend
+    served: true
+    storage: true
+    subresources:
+      status: {}
