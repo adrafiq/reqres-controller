@@ -1,0 +1,12 @@
+apiVersion: reqres.reqres.in/v1alpha1
+kind: User
+metadata:
+  labels:
+    app.kubernetes.io/name: user
+    app.kubernetes.io/instance: user-sample
+    app.kubernetes.io/part-of: reqres-controller
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: reqres-controller
+  name: user-sample
+spec:
+  # TODO(user): Add fields here
