@@ -12,7 +12,7 @@ metadata:
   name: user-viewer-role
 rules:
 - apiGroups:
-  - reqres.reqres.in
+  - users.reqres.in
   resources:
   - users
   verbs:
@@ -20,7 +20,7 @@ rules:
   - list
   - watch
 - apiGroups:
-  - reqres.reqres.in
+  - users.reqres.in
   resources:
   - users/status
   verbs:

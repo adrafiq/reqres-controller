@@ -1,5 +1,5 @@
-apiVersion: reqres.reqres.in/v1alpha1
-kind: User
+apiVersion: users.reqres.in/v1alpha1
+kind: USER
 metadata:
   labels:
     app.kubernetes.io/name: user

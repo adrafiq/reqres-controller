@@ -12,8 +12,8 @@ resources:
     namespaced: true
   controller: true
   domain: reqres.in
-  group: reqres
-  kind: User
+  group: users
+  kind: USER
   path: github.com/adrafiq/reqres-controller/api/v1alpha1
   version: v1alpha1
 version: "3"

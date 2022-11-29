@@ -24,29 +24,29 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	reqresv1alpha1 "github.com/adrafiq/reqres-controller/api/v1alpha1"
+	usersv1alpha1 "github.com/adrafiq/reqres-controller/api/v1alpha1"
 )
 
-// UserReconciler reconciles a User object
-type UserReconciler struct {
+// USERReconciler reconciles a USER object
+type USERReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=reqres.reqres.in,resources=users,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=reqres.reqres.in,resources=users/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=reqres.reqres.in,resources=users/finalizers,verbs=update
+//+kubebuilder:rbac:groups=users.reqres.in,resources=users,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=users.reqres.in,resources=users/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=users.reqres.in,resources=users/finalizers,verbs=update
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
 // TODO(user): Modify the Reconcile function to compare the state specified by
-// the User object against the actual cluster state, and then
+// the USER object against the actual cluster state, and then
 // perform operations to make the cluster state reflect the state specified by
 // the user.
 //
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.13.0/pkg/reconcile
-func (r *UserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *USERReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	_ = log.FromContext(ctx)
 
 	// TODO(user): your logic here
@@ -55,8 +55,8 @@ func (r *UserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *UserReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *USERReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&reqresv1alpha1.User{}).
+		For(&usersv1alpha1.USER{}).
 		Complete(r)
 }

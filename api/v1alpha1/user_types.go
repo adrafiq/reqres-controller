@@ -23,17 +23,21 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
-// UserSpec defines the desired state of User
-type UserSpec struct {
+// USERSpec defines the desired state of USER
+type USERSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// Foo is an example field of User. Edit user_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+	// +kubebuilder:validation:Required
+	Email string `json:"email"`
+	// +kubebuilder:validation:Required
+	FirstName string `json:"firstName"`
+	LastName  string `json:"lastName,omitempty"`
+	Avatar    string `json:"avatar,omitempty"`
 }
 
-// UserStatus defines the observed state of User
-type UserStatus struct {
+// USERStatus defines the observed state of USER
+type USERStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 }
@@ -41,24 +45,24 @@ type UserStatus struct {
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
-// User is the Schema for the users API
-type User struct {
+// USER is the Schema for the users API
+type USER struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   UserSpec   `json:"spec,omitempty"`
-	Status UserStatus `json:"status,omitempty"`
+	Spec   USERSpec   `json:"spec,omitempty"`
+	Status USERStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 
-// UserList contains a list of User
-type UserList struct {
+// USERList contains a list of USER
+type USERList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []User `json:"items"`
+	Items           []USER `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&User{}, &UserList{})
+	SchemeBuilder.Register(&USER{}, &USERList{})
 }
