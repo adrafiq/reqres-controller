@@ -17,8 +17,16 @@ limitations under the License.
 package controllers
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"io/ioutil"
+	"net/http"
+	"strconv"
+	"time"
 
+	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -32,6 +40,16 @@ type USERReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 }
+
+type UserResponse struct {
+	Id        string `json:"id"`
+	CreatedAt string `json:"createdAt"`
+}
+
+const (
+	notInitialized  = 0
+	httpPostSuccess = 201
+)
 
 //+kubebuilder:rbac:groups=users.reqres.in,resources=users,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=users.reqres.in,resources=users/status,verbs=get;update;patch
@@ -47,10 +65,63 @@ type USERReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.13.0/pkg/reconcile
 func (r *USERReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = log.FromContext(ctx)
 
-	// TODO(user): your logic here
+	logger := log.FromContext(ctx)
+	userCR := &usersv1alpha1.USER{}
+	var userStatus usersv1alpha1.USERStatus
+	err := r.Get(ctx, req.NamespacedName, userCR)
+	if err != nil && errors.IsNotFound(err) {
+		//send http delete
+		logger.Info("Object Deleted")
+		return ctrl.Result{}, nil
+	} else if err != nil {
+		logger.Error(err, "Error getting operator resource object")
+		return ctrl.Result{}, err
+	}
+	// If user not created in backend
+	if userCR.Status.Id == notInitialized {
+		client := http.DefaultClient
+		postBody, _ := json.Marshal(map[string]string{
+			"email":      userCR.Spec.Email,
+			"first_name": userCR.Spec.FirstName,
+			"last_name":  userCR.Spec.LastName,
+		})
+		body := bytes.NewBuffer(postBody)
+		httpReq, _ := http.NewRequest("POST", "", body)
+		httpReq.URL.Path = "/api/users"
+		httpReq.URL.Scheme = "https"
+		httpReq.URL.Host = "reqres.in"
+		res, err := client.Do(httpReq)
+		if err != nil {
+			return ctrl.Result{Requeue: true}, nil
+		}
+		defer res.Body.Close()
+		if res.StatusCode == httpPostSuccess {
+			var response UserResponse
+			resBody, _ := ioutil.ReadAll(res.Body)
+			json.Unmarshal(resBody, &response)
+			id, _ := strconv.Atoi(response.Id)
+			userStatus = usersv1alpha1.USERStatus{
+				Id: id,
+				Conditions: []metav1.Condition{{
+					Type:               "Available",
+					Status:             metav1.ConditionTrue,
+					LastTransitionTime: metav1.NewTime(time.Now()),
+					Reason:             "OperatorSucceeded",
+					Message:            "user successfully created",
+				}},
+			}
 
+		}
+	}
+
+	// Fetch object. If not deep equal CR, patch it.
+	// Update status
+	userCR.Status = userStatus
+	// r.Get(ctx, req.NamespacedName, userCR)
+	if err := r.Status().Update(ctx, userCR); err != nil {
+		logger.Info("unable to update status")
+	}
 	return ctrl.Result{}, nil
 }
 

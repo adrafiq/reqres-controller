@@ -1,0 +1,17 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+      { 
+        "name": "reqres-in-operator",
+        "type": "go",
+        "request": "launch",
+        "mode": "auto", 
+        "program": "${workspaceFolder}/main.go",
+        "env": { 
+          "WATCH_NAMESPACE": "reqres-in-operator"
+        },
+        "args": []
+      }
+    ] 
+  }
+  
