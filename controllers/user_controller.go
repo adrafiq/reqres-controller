@@ -22,6 +22,8 @@ import (
 	"encoding/json"
 	"io/ioutil"
 	"net/http"
+	"reflect"
+	"sort"
 	"strconv"
 	"time"
 
@@ -41,14 +43,27 @@ type USERReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-type UserResponse struct {
+type UserCreateResponse struct {
 	Id        string `json:"id"`
 	CreatedAt string `json:"createdAt"`
 }
 
+type UserGetResponse struct {
+	Data struct {
+		Id        int    `json:"id"`
+		Email     string `json:"email"`
+		FirstName string `json:"first_name,omitempty"`
+		LastName  string `json:"last_name,omitempty"`
+		Avatar    string `json:"avatar,omitempty"`
+	} `json:"data"`
+	Support struct{} `json:"support,omitempty"`
+}
+
 const (
-	notInitialized  = 0
-	httpPostSuccess = 201
+	notInitialized    = 0
+	httpPostSuccess   = 201
+	httpGetSuccess    = 200
+	httpDeleteSuccess = 204
 )
 
 //+kubebuilder:rbac:groups=users.reqres.in,resources=users,verbs=get;list;watch;create;update;patch;delete
@@ -78,6 +93,36 @@ func (r *USERReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		logger.Error(err, "Error getting operator resource object")
 		return ctrl.Result{}, err
 	}
+
+	if userCR.ObjectMeta.DeletionTimestamp != nil {
+		finalizers := userCR.ObjectMeta.Finalizers
+		ctrlIndex := sort.SearchStrings(finalizers, "users.reqres.in/v1alpha1")
+		finalizers = append(finalizers[:ctrlIndex], finalizers[ctrlIndex+1:]...)
+		userCR.Finalizers = finalizers
+
+		id := strconv.Itoa(2)
+		httpReq, _ := http.NewRequest("DELETE", "", nil)
+		httpReq.URL.Path = "/api/users/" + id
+		httpReq.URL.Scheme = "https"
+		httpReq.URL.Host = "reqres.in"
+		res, err := http.DefaultClient.Do(httpReq)
+		if err != nil {
+			logger.Error(err, "error making http request")
+			return ctrl.Result{Requeue: true}, nil
+		}
+		defer res.Body.Close()
+		if res.StatusCode == httpDeleteSuccess {
+			finalizers := userCR.ObjectMeta.Finalizers
+			ctrlIndex := sort.SearchStrings(finalizers, "reqres")
+			finalizers = append(finalizers[:ctrlIndex], finalizers[ctrlIndex+1:]...)
+			userCR.Finalizers = finalizers
+		}
+		return ctrl.Result{}, nil
+
+	}
+	// If deleted and stuck on finalizer,
+	// http delete and remove finalizer
+
 	// If user not created in backend
 	if userCR.Status.Id == notInitialized {
 		client := http.DefaultClient
@@ -97,7 +142,7 @@ func (r *USERReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		}
 		defer res.Body.Close()
 		if res.StatusCode == httpPostSuccess {
-			var response UserResponse
+			var response UserCreateResponse
 			resBody, _ := ioutil.ReadAll(res.Body)
 			json.Unmarshal(resBody, &response)
 			id, _ := strconv.Atoi(response.Id)
@@ -113,16 +158,80 @@ func (r *USERReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 			}
 
 		}
+	} else {
+		id := strconv.Itoa(2)
+		httpReq, _ := http.NewRequest("GET", "", nil)
+		httpReq.URL.Path = "/api/users/" + id
+		httpReq.URL.Scheme = "https"
+		httpReq.URL.Host = "reqres.in"
+		res, err := http.DefaultClient.Do(httpReq)
+		if err != nil {
+			logger.Error(err, "error making http request")
+			return ctrl.Result{Requeue: true}, nil
+		}
+		defer res.Body.Close()
+		if res.StatusCode == httpGetSuccess {
+			resBody, _ := ioutil.ReadAll(res.Body)
+			var userGetResponse UserGetResponse
+			json.Unmarshal(resBody, &userGetResponse)
+			user := usersv1alpha1.USERSpec{
+				Email:     userGetResponse.Data.Email,
+				FirstName: userGetResponse.Data.FirstName,
+				LastName:  userGetResponse.Data.LastName,
+				Avatar:    userGetResponse.Data.Avatar,
+			}
+			userStatus = usersv1alpha1.USERStatus{
+				Id: userGetResponse.Data.Id,
+				Conditions: []metav1.Condition{{
+					Type:               "Available",
+					Status:             metav1.ConditionTrue,
+					LastTransitionTime: metav1.NewTime(time.Now()),
+					Reason:             "OperatorSucceeded",
+					Message:            "user successfully synced",
+				}},
+			}
+			if !reflect.DeepEqual(user, userCR.Spec) {
+				userCR.Spec = user
+				// Patch User
+				client := http.DefaultClient
+				postBody, _ := json.Marshal(map[string]string{
+					"email":      userCR.Spec.Email,
+					"first_name": userCR.Spec.FirstName,
+					"last_name":  userCR.Spec.LastName,
+				})
+				body := bytes.NewBuffer(postBody)
+				id := strconv.Itoa(2)
+				httpReq, _ := http.NewRequest("PATCH", "", body)
+				httpReq.URL.Path = "/api/users/" + id
+				httpReq.URL.Scheme = "https"
+				httpReq.URL.Host = "reqres.in"
+				res, err := client.Do(httpReq)
+				if err != nil {
+					return ctrl.Result{Requeue: true}, nil
+				}
+				defer res.Body.Close()
+
+			}
+			userStatus = usersv1alpha1.USERStatus{
+				Id: userGetResponse.Data.Id,
+				Conditions: []metav1.Condition{{
+					Type:               "Available",
+					Status:             metav1.ConditionTrue,
+					LastTransitionTime: metav1.NewTime(time.Now()),
+					Reason:             "OperatorSucceeded",
+					Message:            "user successfully updated",
+				}},
+			}
+		}
 	}
 
-	// Fetch object. If not deep equal CR, patch it.
-	// Update status
 	userCR.Status = userStatus
 	// r.Get(ctx, req.NamespacedName, userCR)
 	if err := r.Status().Update(ctx, userCR); err != nil {
 		logger.Info("unable to update status")
 	}
 	return ctrl.Result{}, nil
+
 }
 
 // SetupWithManager sets up the controller with the Manager.
