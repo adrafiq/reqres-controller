@@ -1,0 +1,10 @@
+apiVersion: users.reqres.in/v1alpha1
+kind: USER
+metadata:
+  name: adil
+  finalizers:
+    - users.reqres.in/v1alpha1
+spec:
+  email: test@emailupdate.com
+  firstName: Adil
+  lastName: Rafique

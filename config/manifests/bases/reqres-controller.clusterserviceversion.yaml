@@ -1,0 +1,47 @@
+apiVersion: operators.coreos.com/v1alpha1
+kind: ClusterServiceVersion
+metadata:
+  annotations:
+    alm-examples: '[]'
+    capabilities: Basic Install
+  name: reqres-controller.v0.0.0
+  namespace: placeholder
+spec:
+  apiservicedefinitions: {}
+  customresourcedefinitions:
+    owned:
+    - description: USER is the Schema for the users API
+      displayName: USER
+      kind: USER
+      name: users.users.reqres.in
+      version: v1alpha1
+  description: Manges lifecycle for users CR with reqres.in user api
+  displayName: reqres-controller
+  icon:
+  - base64data: ""
+    mediatype: ""
+  install:
+    spec:
+      deployments: null
+    strategy: ""
+  installModes:
+  - supported: false
+    type: OwnNamespace
+  - supported: false
+    type: SingleNamespace
+  - supported: false
+    type: MultiNamespace
+  - supported: true
+    type: AllNamespaces
+  keywords:
+  - test
+  links:
+  - name: Reqres Controller
+    url: https://reqres-controller.domain
+  maintainers:
+  - email: adrafiq.52@gmail.com
+    name: adil
+  maturity: alpha
+  provider:
+    name: adil
+  version: 0.0.0
