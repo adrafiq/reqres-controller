@@ -24,3 +24,9 @@ Dockerfile.cross
 *.swp
 *.swo
 *~
+
+# Sample user files
+.users
+
+#Environment file
+.env

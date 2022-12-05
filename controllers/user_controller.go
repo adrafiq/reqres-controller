@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"io/ioutil"
 	"net/http"
+	"os"
 	"reflect"
 	"sort"
 	"strconv"
@@ -64,6 +65,7 @@ const (
 	httpPostSuccess   = 201
 	httpGetSuccess    = 200
 	httpDeleteSuccess = 204
+	ctrlFinalizer     = "users.reqres.in/v1alpha1"
 )
 
 //+kubebuilder:rbac:groups=users.reqres.in,resources=users,verbs=get;list;watch;create;update;patch;delete
@@ -82,6 +84,7 @@ const (
 func (r *USERReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	userCR := &usersv1alpha1.USER{}
+	reqresURL := os.Getenv("REQRES_ROOT_URL")
 	var userStatus usersv1alpha1.USERStatus
 	err := r.Get(ctx, req.NamespacedName, userCR)
 	if err != nil && errors.IsNotFound(err) {
@@ -97,7 +100,7 @@ func (r *USERReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	// If deleted, http delete and remove finalizer
 	if userCR.ObjectMeta.DeletionTimestamp != nil {
 		api := `api/users/` + strconv.Itoa(userCR.Status.Id)
-		url := "https://reqres.in/" + api
+		url := reqresURL + api
 		httpReq, _ := http.NewRequest("DELETE", url, nil)
 		res, err := client.Do(httpReq)
 		if err != nil {
@@ -107,7 +110,7 @@ func (r *USERReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		defer res.Body.Close()
 		if res.StatusCode == httpDeleteSuccess {
 			finalizers := userCR.ObjectMeta.Finalizers
-			ctrlIndex := sort.SearchStrings(finalizers, "reqres")
+			ctrlIndex := sort.SearchStrings(finalizers, ctrlFinalizer)
 			finalizers = append(finalizers[:ctrlIndex], finalizers[ctrlIndex+1:]...)
 			userCR.Finalizers = finalizers
 		}
@@ -124,7 +127,7 @@ func (r *USERReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		})
 		body := bytes.NewBuffer(postBody)
 		api := `api/users/`
-		url := "https://reqres.in/" + api
+		url := reqresURL + api
 		httpReq, _ := http.NewRequest("POST", url, body)
 		res, err := client.Do(httpReq)
 		if err != nil {
@@ -150,7 +153,7 @@ func (r *USERReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	} else {
 		// Check if CR not equals to backend obj, update it
 		api := `api/users/` + strconv.Itoa(userCR.Status.Id)
-		url := "https://reqres.in/" + api
+		url := reqresURL + api
 		httpReq, _ := http.NewRequest("GET", url, nil)
 		res, err := client.Do(httpReq)
 		if err != nil {
@@ -206,7 +209,7 @@ func (r *USERReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 			})
 			body := bytes.NewBuffer(postBody)
 			api := `api/users/` + strconv.Itoa(userCR.Status.Id)
-			url := "https://reqres.in/" + api
+			url := reqresURL + api
 			httpReq, _ := http.NewRequest("PATCH", url, body)
 			res, err := client.Do(httpReq)
 			if err != nil {
