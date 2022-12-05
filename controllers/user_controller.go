@@ -22,7 +22,6 @@ import (
 	"encoding/json"
 	"io/ioutil"
 	"net/http"
-	"os"
 	"reflect"
 	"sort"
 	"strconv"
@@ -36,12 +35,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	usersv1alpha1 "github.com/adrafiq/reqres-controller/api/v1alpha1"
+	"github.com/spf13/viper"
 )
 
 // USERReconciler reconciles a USER object
 type USERReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
+	Config *viper.Viper
 }
 
 type UserCreateResponse struct {
@@ -84,7 +85,7 @@ const (
 func (r *USERReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	userCR := &usersv1alpha1.USER{}
-	reqresURL := os.Getenv("REQRES_ROOT_URL")
+	reqresURL := r.Config.GetString("REQRES_ROOT_URL")
 	var userStatus usersv1alpha1.USERStatus
 	err := r.Get(ctx, req.NamespacedName, userCR)
 	if err != nil && errors.IsNotFound(err) {

@@ -18,7 +18,6 @@ package main
 
 import (
 	"flag"
-	"log"
 	"os"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
@@ -34,7 +33,7 @@ import (
 
 	usersv1alpha1 "github.com/adrafiq/reqres-controller/api/v1alpha1"
 	"github.com/adrafiq/reqres-controller/controllers"
-	"github.com/joho/godotenv"
+	envConfig "github.com/adrafiq/reqres-controller/pkg/config"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -54,10 +53,7 @@ func main() {
 	var metricsAddr string
 	var enableLeaderElection bool
 	var probeAddr string
-	err := godotenv.Load()
-	if err != nil {
-		log.Fatal("Error loading .env file")
-	}
+	config := envConfig.New()
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
@@ -98,6 +94,7 @@ func main() {
 	if err = (&controllers.USERReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
+		Config: config,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "USER")
 		os.Exit(1)
