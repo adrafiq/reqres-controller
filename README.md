@@ -1,8 +1,6 @@
 # reqres-controller
-// TODO(user): Add simple overview of use/purpose
+A kubernetes controller built on golang that CRUDs reqres.in API. The goal is to demonstrate scalability, integrity and reliability of kubernetes extension pattern to terraform.
 
-## Description
-// TODO(user): An in-depth paragraph about your project and overview of use
 
 ## Getting Started
 You’ll need a Kubernetes cluster to run against. You can use [KIND](https://sigs.k8s.io/kind) to get a local cluster for testing, or run against a remote cluster.
