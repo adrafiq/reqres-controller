@@ -67,7 +67,6 @@ func (r *USERReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	var userStatus usersv1alpha1.USERStatus
 	err := r.Get(ctx, req.NamespacedName, userCR)
 	if err != nil && errors.IsNotFound(err) {
-		//send http delete
 		logger.Info("Object Deleted")
 		return ctrl.Result{}, nil
 	} else if err != nil {
@@ -153,7 +152,7 @@ func (r *USERReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		}
 		if !reflect.DeepEqual(user, userFromCR) {
 			// Patch User
-			err := client.UpdateUser(*user)
+			err := client.UpdateUser(*&userFromCR)
 			if err != nil {
 				logger.Error(err, "error making http request")
 				return ctrl.Result{Requeue: true}, nil
