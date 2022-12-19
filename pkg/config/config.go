@@ -7,7 +7,7 @@ import (
 func New() *viper.Viper {
 	var envConfig = viper.New()
 	// if env file, then that else os.env
-	envConfig.Set("REQRES_ROOT_URL", nil)
+	envConfig.Set("REQRES_ROOT_URL", "https://reqres.in")
 	envConfig.AutomaticEnv()
 	return envConfig
 }

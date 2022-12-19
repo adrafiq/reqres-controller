@@ -17,14 +17,9 @@ limitations under the License.
 package controllers
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
-	"io/ioutil"
-	"net/http"
 	"reflect"
 	"sort"
-	"strconv"
 	"time"
 
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -35,6 +30,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	usersv1alpha1 "github.com/adrafiq/reqres-controller/api/v1alpha1"
+	reqres "github.com/adrafiq/reqres-controller/pkg/reqres"
 	"github.com/spf13/viper"
 )
 
@@ -45,28 +41,9 @@ type USERReconciler struct {
 	Config *viper.Viper
 }
 
-type UserCreateResponse struct {
-	Id        string `json:"id"`
-	CreatedAt string `json:"createdAt"`
-}
-
-type UserGetResponse struct {
-	Data struct {
-		Id        int    `json:"id"`
-		Email     string `json:"email"`
-		FirstName string `json:"first_name,omitempty"`
-		LastName  string `json:"last_name,omitempty"`
-		Avatar    string `json:"avatar,omitempty"`
-	} `json:"data"`
-	Support struct{} `json:"support,omitempty"`
-}
-
 const (
-	notInitialized    = 0
-	httpPostSuccess   = 201
-	httpGetSuccess    = 200
-	httpDeleteSuccess = 204
-	ctrlFinalizer     = "users.reqres.in/v1alpha1"
+	notInitialized = 0
+	ctrlFinalizer  = "users.reqres.in/v1alpha1"
 )
 
 //+kubebuilder:rbac:groups=users.reqres.in,resources=users,verbs=get;list;watch;create;update;patch;delete
@@ -86,6 +63,7 @@ func (r *USERReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	logger := log.FromContext(ctx)
 	userCR := &usersv1alpha1.USER{}
 	reqresURL := r.Config.GetString("REQRES_ROOT_URL")
+	client := reqres.NewClient(reqresURL, &logger)
 	var userStatus usersv1alpha1.USERStatus
 	err := r.Get(ctx, req.NamespacedName, userCR)
 	if err != nil && errors.IsNotFound(err) {
@@ -97,73 +75,51 @@ func (r *USERReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		return ctrl.Result{}, err
 	}
 
-	client := http.DefaultClient
 	// If deleted, http delete and remove finalizer
 	if userCR.ObjectMeta.DeletionTimestamp != nil {
-		api := `api/users/` + strconv.Itoa(userCR.Status.Id)
-		url := reqresURL + api
-		httpReq, _ := http.NewRequest("DELETE", url, nil)
-		res, err := client.Do(httpReq)
+		client.DeleteUser(userCR.Status.Id)
 		if err != nil {
-			logger.Error(err, "error making http request")
+			logger.Error(err, "http client error")
 			return ctrl.Result{Requeue: true}, nil
 		}
-		defer res.Body.Close()
-		if res.StatusCode == httpDeleteSuccess {
-			finalizers := userCR.ObjectMeta.Finalizers
-			ctrlIndex := sort.SearchStrings(finalizers, ctrlFinalizer)
-			finalizers = append(finalizers[:ctrlIndex], finalizers[ctrlIndex+1:]...)
-			userCR.Finalizers = finalizers
-		}
+		finalizers := userCR.ObjectMeta.Finalizers
+		idx := sort.SearchStrings(finalizers, ctrlFinalizer)
+		finalizers = append(finalizers[:idx], finalizers[idx+1:]...)
+		userCR.Finalizers = finalizers
 		r.Update(ctx, userCR)
 		return ctrl.Result{}, nil
 	}
 
 	// Create user in backend, if not exists
 	if userCR.Status.Id == notInitialized {
-		postBody, _ := json.Marshal(map[string]string{
-			"email":      userCR.Spec.Email,
-			"first_name": userCR.Spec.FirstName,
-			"last_name":  userCR.Spec.LastName,
-		})
-		body := bytes.NewBuffer(postBody)
-		api := `api/users/`
-		url := reqresURL + api
-		httpReq, _ := http.NewRequest("POST", url, body)
-		res, err := client.Do(httpReq)
+		user := reqres.User{
+			Email:     userCR.Spec.Email,
+			FirstName: userCR.Spec.FirstName,
+			LastName:  userCR.Spec.LastName,
+		}
+		userCreated, err := client.CreateUser(user)
 		if err != nil {
+			logger.Error(err, "http client error")
 			return ctrl.Result{Requeue: true}, nil
 		}
-		defer res.Body.Close()
-		if res.StatusCode == httpPostSuccess {
-			var response UserCreateResponse
-			resBody, _ := ioutil.ReadAll(res.Body)
-			json.Unmarshal(resBody, &response)
-			id, _ := strconv.Atoi(response.Id)
-			userStatus = usersv1alpha1.USERStatus{
-				Id: id,
-				Conditions: []metav1.Condition{{
-					Type:               "Available",
-					Status:             metav1.ConditionTrue,
-					LastTransitionTime: metav1.NewTime(time.Now()),
-					Reason:             "OperatorSucceeded",
-					Message:            "user successfully created",
-				}},
-			}
+		userStatus = usersv1alpha1.USERStatus{
+			Id: userCreated.Id,
+			Conditions: []metav1.Condition{{
+				Type:               "Available",
+				Status:             metav1.ConditionTrue,
+				LastTransitionTime: metav1.NewTime(time.Now()),
+				Reason:             "OperatorSucceeded",
+				Message:            "user successfully created",
+			}},
 		}
 	} else {
 		// Check if CR not equals to backend obj, update it
-		api := `api/users/` + strconv.Itoa(userCR.Status.Id)
-		url := reqresURL + api
-		httpReq, _ := http.NewRequest("GET", url, nil)
-		res, err := client.Do(httpReq)
-		if err != nil {
-			logger.Error(err, "error making http request")
+		user, err := client.GetUser(userCR.Status.Id)
+		if err != nil && err.Error() == "error making http request" {
+			logger.Error(err, "http client error")
 			return ctrl.Result{Requeue: true}, nil
-		}
-		defer res.Body.Close()
-		if res.StatusCode != httpGetSuccess {
-			logger.Error(nil, "unable to find user in backend")
+		} else if err != nil {
+			logger.Error(err, "unable to find user in backend")
 			userStatus = usersv1alpha1.USERStatus{
 				Id: 0,
 				Conditions: []metav1.Condition{{
@@ -180,17 +136,8 @@ func (r *USERReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 			}
 			return ctrl.Result{Requeue: true}, nil
 		}
-		resBody, _ := ioutil.ReadAll(res.Body)
-		var userGetResponse UserGetResponse
-		json.Unmarshal(resBody, &userGetResponse)
-		user := usersv1alpha1.USERSpec{
-			Email:     userGetResponse.Data.Email,
-			FirstName: userGetResponse.Data.FirstName,
-			LastName:  userGetResponse.Data.LastName,
-			Avatar:    userGetResponse.Data.Avatar,
-		}
 		userStatus = usersv1alpha1.USERStatus{
-			Id: userGetResponse.Data.Id,
+			Id: user.Id,
 			Conditions: []metav1.Condition{{
 				Type:               "Available",
 				Status:             metav1.ConditionTrue,
@@ -199,26 +146,20 @@ func (r *USERReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 				Message:            "user successfully synced",
 			}},
 		}
-		if !reflect.DeepEqual(user, userCR.Spec) {
-			userCR.Spec = user
+		userFromCR := reqres.User{
+			Email:     userCR.Spec.Email,
+			FirstName: userCR.Spec.FirstName,
+			LastName:  userCR.Spec.LastName,
+		}
+		if !reflect.DeepEqual(user, userFromCR) {
 			// Patch User
-			client := http.DefaultClient
-			postBody, _ := json.Marshal(map[string]string{
-				"email":      userCR.Spec.Email,
-				"first_name": userCR.Spec.FirstName,
-				"last_name":  userCR.Spec.LastName,
-			})
-			body := bytes.NewBuffer(postBody)
-			api := `api/users/` + strconv.Itoa(userCR.Status.Id)
-			url := reqresURL + api
-			httpReq, _ := http.NewRequest("PATCH", url, body)
-			res, err := client.Do(httpReq)
+			err := client.UpdateUser(*user)
 			if err != nil {
+				logger.Error(err, "error making http request")
 				return ctrl.Result{Requeue: true}, nil
 			}
-			defer res.Body.Close()
 			userStatus = usersv1alpha1.USERStatus{
-				Id: userGetResponse.Data.Id,
+				Id: user.Id,
 				Conditions: []metav1.Condition{{
 					Type:               "Available",
 					Status:             metav1.ConditionTrue,
