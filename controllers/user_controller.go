@@ -31,6 +31,7 @@ import (
 
 	usersv1alpha1 "github.com/adrafiq/reqres-controller/api/v1alpha1"
 	reqres "github.com/adrafiq/reqres-controller/pkg/reqres"
+	"github.com/go-logr/logr"
 	"github.com/spf13/viper"
 )
 
@@ -64,7 +65,6 @@ func (r *USERReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	userCR := &usersv1alpha1.USER{}
 	reqresURL := r.Config.GetString("REQRES_ROOT_URL")
 	client := reqres.NewClient(reqresURL, &logger)
-	var userStatus usersv1alpha1.USERStatus
 	err := r.Get(ctx, req.NamespacedName, userCR)
 	if err != nil && errors.IsNotFound(err) {
 		logger.Info("Object Deleted")
@@ -91,48 +91,83 @@ func (r *USERReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 
 	// Create user in backend, if not exists
 	if userCR.Status.Id == notInitialized {
-		user := reqres.User{
-			Email:     userCR.Spec.Email,
-			FirstName: userCR.Spec.FirstName,
-			LastName:  userCR.Spec.LastName,
-		}
-		userCreated, err := client.CreateUser(user)
-		if err != nil {
-			logger.Error(err, "http client error")
-			return ctrl.Result{Requeue: true}, nil
-		}
+		return r.createUser(ctx, userCR, &client, &logger)
+	}
+	return r.updateUser(ctx, userCR, &client, &logger)
+}
+
+func (r *USERReconciler) createUser(ctx context.Context, userCR *usersv1alpha1.USER, client *reqres.Client, logger *logr.Logger) (ctrl.Result, error) {
+	user := reqres.User{
+		Email:     userCR.Spec.Email,
+		FirstName: userCR.Spec.FirstName,
+		LastName:  userCR.Spec.LastName,
+	}
+	userCreated, err := client.CreateUser(user)
+	if err != nil {
+		logger.Error(err, "http client error")
+		return ctrl.Result{Requeue: true}, nil
+	}
+	userStatus := usersv1alpha1.USERStatus{
+		Id: userCreated.Id,
+		Conditions: []metav1.Condition{{
+			Type:               "Available",
+			Status:             metav1.ConditionTrue,
+			LastTransitionTime: metav1.NewTime(time.Now()),
+			Reason:             "OperatorSucceeded",
+			Message:            "user successfully created",
+		}},
+	}
+	userCR.Status = userStatus
+	if err := r.Status().Update(ctx, userCR); err != nil {
+		logger.Info("unable to update status")
+	}
+	return ctrl.Result{}, nil
+}
+
+func (r *USERReconciler) updateUser(ctx context.Context, userCR *usersv1alpha1.USER, client *reqres.Client, logger *logr.Logger) (ctrl.Result, error) {
+	var userStatus usersv1alpha1.USERStatus
+	user, err := client.GetUser(userCR.Status.Id)
+	if err != nil && err.Error() == "error making http request" {
+		logger.Error(err, "http client error")
+		return ctrl.Result{Requeue: true}, nil
+	} else if err != nil {
+		logger.Error(err, "unable to find user in backend")
 		userStatus = usersv1alpha1.USERStatus{
-			Id: userCreated.Id,
+			Id: 0,
 			Conditions: []metav1.Condition{{
-				Type:               "Available",
-				Status:             metav1.ConditionTrue,
+				Type:               "Unavailable",
+				Status:             metav1.ConditionUnknown,
 				LastTransitionTime: metav1.NewTime(time.Now()),
 				Reason:             "OperatorSucceeded",
-				Message:            "user successfully created",
+				Message:            "could not find user in backend",
 			}},
 		}
-	} else {
-		// Check if CR not equals to backend obj, update it
-		user, err := client.GetUser(userCR.Status.Id)
-		if err != nil && err.Error() == "error making http request" {
-			logger.Error(err, "http client error")
-			return ctrl.Result{Requeue: true}, nil
-		} else if err != nil {
-			logger.Error(err, "unable to find user in backend")
-			userStatus = usersv1alpha1.USERStatus{
-				Id: 0,
-				Conditions: []metav1.Condition{{
-					Type:               "Unavailable",
-					Status:             metav1.ConditionUnknown,
-					LastTransitionTime: metav1.NewTime(time.Now()),
-					Reason:             "OperatorSucceeded",
-					Message:            "could not find user in backend",
-				}},
-			}
-			userCR.Status = userStatus
-			if err := r.Status().Update(ctx, userCR); err != nil {
-				logger.Info("unable to update status")
-			}
+		userCR.Status = userStatus
+		if err := r.Status().Update(ctx, userCR); err != nil {
+			logger.Info("unable to update status")
+		}
+		return ctrl.Result{Requeue: true}, nil
+	}
+	userStatus = usersv1alpha1.USERStatus{
+		Id: user.Id,
+		Conditions: []metav1.Condition{{
+			Type:               "Available",
+			Status:             metav1.ConditionTrue,
+			LastTransitionTime: metav1.NewTime(time.Now()),
+			Reason:             "OperatorSucceeded",
+			Message:            "user successfully synced",
+		}},
+	}
+	userFromCR := reqres.User{
+		Email:     userCR.Spec.Email,
+		FirstName: userCR.Spec.FirstName,
+		LastName:  userCR.Spec.LastName,
+	}
+	if !reflect.DeepEqual(user, userFromCR) {
+		// Patch User
+		err := client.UpdateUser(*&userFromCR)
+		if err != nil {
+			logger.Error(err, "error making http request")
 			return ctrl.Result{Requeue: true}, nil
 		}
 		userStatus = usersv1alpha1.USERStatus{
@@ -142,34 +177,10 @@ func (r *USERReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 				Status:             metav1.ConditionTrue,
 				LastTransitionTime: metav1.NewTime(time.Now()),
 				Reason:             "OperatorSucceeded",
-				Message:            "user successfully synced",
+				Message:            "user successfully updated",
 			}},
 		}
-		userFromCR := reqres.User{
-			Email:     userCR.Spec.Email,
-			FirstName: userCR.Spec.FirstName,
-			LastName:  userCR.Spec.LastName,
-		}
-		if !reflect.DeepEqual(user, userFromCR) {
-			// Patch User
-			err := client.UpdateUser(*&userFromCR)
-			if err != nil {
-				logger.Error(err, "error making http request")
-				return ctrl.Result{Requeue: true}, nil
-			}
-			userStatus = usersv1alpha1.USERStatus{
-				Id: user.Id,
-				Conditions: []metav1.Condition{{
-					Type:               "Available",
-					Status:             metav1.ConditionTrue,
-					LastTransitionTime: metav1.NewTime(time.Now()),
-					Reason:             "OperatorSucceeded",
-					Message:            "user successfully updated",
-				}},
-			}
-		}
 	}
-
 	userCR.Status = userStatus
 	if err := r.Status().Update(ctx, userCR); err != nil {
 		logger.Info("unable to update status")
